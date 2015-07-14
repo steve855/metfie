@@ -9,6 +9,9 @@ and t[-5:].  That will leave the function unchanged at 2 points at
 each edge of the domain.
 
 """
+
+import sys, os 
+import pdb
 import numpy as np
 import scipy.interpolate # InterpolatedUnivariateSpline
 #https://github.com/scipy/scipy/blob/v0.14.0/scipy/interpolate/fitpack2.py
@@ -313,26 +316,7 @@ barrel and the forces at those positons respectively. '''
             print('all constraints={0},\n min={1:.6e}'.format(a,b))
             raise RuntimeError
         return 0
-    def G_matrix(self):
-        ''' Get constraint matrix
-        '''
-        original_eos = self.eos
-        dim = len(original_eos.get_c()) - magic.end
-        t_all = self.eos.get_t()
-        t_unique = t_all[magic.end-1:1-magic.end]
-        c = np.zeros(dim + magic.end)
-        n_constraints = len(t_unique) + 2
-        G = np.zeros((len(t_unique)+2, dim))
-        for i in range(dim):
-            c[i] = 1.0
-            f = self.eos.set_c(c)
-            G[:-2,i] = -f.derivative(2)(t_unique)
-            G[-2,i] = f.derivative(1)(t_unique[-1])
-            G[-1,i] = -f(t_unique[-1])
-            c[i] = 0.0
-        self.eos = original_eos
-        raise RuntimeError
-        return G
+    
     def constraint(self, d, scale=False):
         '''Return the vector of inequality constraint function values.
         The constraints are conditions at the unique knots (excluding
@@ -353,6 +337,7 @@ barrel and the forces at those positons respectively. '''
         #return np.ones(len(t_unique)+2)
         rv = np.empty(len(t_unique)+2)
         eos_mod = self.eos.set_c(c)
+
         rv[:-2] = eos_mod.derivative(2)(t_unique)
         rv[-2] = -eos_mod.derivative(1)(t_unique[-1])
         rv[-1] = eos_mod(t_unique[-1])
@@ -384,7 +369,8 @@ barrel and the forces at those positons respectively. '''
                 d_con[:,i] *= self.con_scale
             c[i] = 0.0
         self.eos = original_eos
-        return self.d_constraint
+        # pdb.set_trace()
+        return d_con
     def opt(
             self, # GUN instance
             vt,   # Simulated experimental data
@@ -392,6 +378,67 @@ barrel and the forces at those positons respectively. '''
         ''' Do a constrained optimization step
         ''' 
         from scipy.optimize import fmin_slsqp as fmin
+        sys.path.append(os.path.abspath('/home/sandrews/svn/pyACDT/pyACDT/Optimization/pyOpt/2to3'))
+        from pyOpt_optimization import Optimization
+        sys.path.append(os.path.abspath('/home/sandrews/svn/pyACDT/pyACDT/Optimization/pyOpt/2to3/pySNOPT'))
+        from pySNOPT import SNOPT
+        sys.path.append(os.path.abspath('/home/sandrews/svn/pyACDT/pyACDT/Optimization/pyOpt/2to3/pyNLPQL'))
+        from pyNLPQL import NLPQL
+
+        def objfun(x, param = None):
+            '''
+
+            Objective function
+
+            '''
+
+            f_func = lambda d, obj: obj.func(d) 
+            g_func = lambda d, obj: obj.constraint(d)
+            ncon = 50
+            try:
+                f = f_func(x, param)
+                g = g_func(x, param)
+                fail = False
+            except Exception as inst:
+                print inst 
+                pdb.post_mortem()
+                f = 1E21 
+                g = [1E21]*ncon
+                fail = True
+            #end
+
+            return f, g, fail
+
+        def user_def_sens(xn, f, g, param = None):
+            '''
+
+            User defined sensitivities of objective and contstraints 
+
+            '''
+            df_func = lambda d, obj: obj.d_func(d)
+            dg_func = lambda d, obj: obj.calc_d_constraint()
+            try:
+                df = np.array([df_func(xn, param)])
+                dg = dg_func(xn, param)
+                fail = False
+            except Exception as inst:
+                print inst 
+                pdb.post_mortem()
+                df = np.ones((50,1)) * 1E21 
+                dg = np.ones((50, 50)) * 1E21
+                fail = True
+            #end
+            return df, dg, fail
+
+        opt_prob = Optimization('EOS Model Optimization', objfun)
+
+        opt_prob.addVarGroup('EOS Spline coefficient ', 50, lower = -2.0, upper = 2.0, value = 0.0)
+        opt_prob.addConGroup('Spline knot 2nd derrivative', 48, 'i')
+        opt_prob.addCon('Spline last knot slope', 'i')
+        opt_prob.addCon('Spline last knot value', 'i')
+
+        opt_prob.addObj('f')
+
         new_c = self.eos.get_c().copy()
         self.set_D() # Expensive
         self.set_Be(vt)
@@ -400,18 +447,40 @@ barrel and the forces at those positons respectively. '''
         self.f_scale = 1.0/self.func(d, scale=False)
         self.con_scale = 1.0/self.constraint(d, scale=False)
         self.calc_d_constraint()
-        d_hat, ss, its, imode, smode = fmin(
-            lambda d, slf: slf.func(d),
-            d,
-            f_ieqcons=lambda d, slf: slf.constraint(d),
-            args=(self,),  # This will be slf in lambda expressions
-            fprime=lambda d, slf: slf.d_func(d),
-            iter=2000,
-            fprime_ieqcons=lambda d, slf: slf.d_constraint,
-            full_output=True,
-            disp=2,
-            )
-        assert imode == 0,'Exit mode of fmin={0}\n{1}'.format(imode, smode)
+
+        # pdb.set_trace()
+
+        print(opt_prob)
+
+        snopt = SNOPT()
+        snopt.setOption('Print file','EOS_snPrint')
+        snopt.setOption('Summary file','EOS_snSum')
+
+        nlpql = NLPQL()
+        nlpql.setOption('iPrint',4)
+        nlpql.setOption('iFile','EOS_NLPQL_sum')
+
+        try:
+            # f_hat, d_hat, info = snopt(opt_prob, sens_type = user_def_sens, param = self)
+            f_hat, d_hat, info = nlpql(opt_prob, sens_type = user_def_sens, param = self)
+        except Exception as inst:
+            print inst 
+
+        print(opt_prob._solutions[0])
+
+
+        # d_hat, ss, its, imode, smode = fmin(
+        #     lambda d, slf: slf.func(d),
+        #     d,
+        #     f_ieqcons=lambda d, slf: slf.constraint(d),
+        #     args=(self,),  # This will be slf in lambda expressions
+        #     fprime=lambda d, slf: slf.d_func(d),
+        #     iter=2000,
+        #     fprime_ieqcons=lambda d, slf: slf.d_constraint,
+        #     full_output=True,
+        #     disp=2,
+        #     )
+        # assert imode == 0,'Exit mode of fmin={0}\n{1}'.format(imode, smode)
         new_c[:-magic.end] += d_hat
         self.eos = self.eos.set_c(new_c)
         return d_hat
@@ -839,10 +908,6 @@ def test():
     assert s  == '79200000000.0','gun.E(4)={0}'.format(s)
 
     test_gun_splines(gun) # Makes gun.eos and gun.t2v splines
-    G = gun.G_matrix()
-    print(G[:5,:4])
-    print(G[-5:,-4:])
-    return 0
     eos_0 = gun.eos
     v_exp, t_exp = experiment()
     test_set_D(gun, 'D_test.pdf')
@@ -869,7 +934,7 @@ def test():
 if __name__ == "__main__":
     import sys
     if len(sys.argv) >1 and sys.argv[1] == 'test':
-        sys.exit(test())
+        #sys.exit(test())
         sys.exit(test_opt())
     main()
 

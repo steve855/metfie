@@ -1,0 +1,47 @@
+
+ ==============================
+ S N O P T  7.2-5    (May 2007)
+ ==============================
+ 
+ SNMEMB EXIT 100 -- finished successfully
+ SNMEMB INFO 104 -- memory requirements estimated
+
+ ==============================
+ S N O P T  7.2-5    (May 2007)
+ ==============================
+ 
+ 
+
+ Nonlinear constraints      50     Linear constraints       0
+ Nonlinear variables        50     Linear variables         0
+ Jacobian  variables        50     Objective variables     50
+ Total constraints          50     Total variables         50
+ 
+
+ 
+ The user has defined    2500   out of    2500   constraint gradients.
+ The user has defined      50   out of      50   objective  gradients.
+ 
+ 
+ SNOPTC EXIT  40 -- terminated after numerical difficulties
+ SNOPTC INFO  43 -- cannot satisfy the general constraints
+
+ Problem name                 SNOPT
+ No. of iterations                   0   Objective value      1.9353446040E+09
+ No. of major iterations             0   Linear objective     0.0000000000E+00
+ Penalty parameter           0.000E+00   Nonlinear objective  1.9353446040E+09
+ No. of calls to funobj              2   No. of calls to funcon              2
+ No. of degenerate steps             0   Percentage                       0.00
+ Max x                       1 0.0E+00   Max pi                      1 0.0E+00
+ Max Primal infeas           0 0.0E+00   Max Dual infeas            35 4.5E-02
+ Nonlinear constraint violn    8.7E+13
+ 
+ 
+
+ Solution printed on file  18
+ 
+ Time for MPS input                             0.00 seconds
+ Time for solving problem                       0.00 seconds
+ Time for solution output                       0.00 seconds
+ Time for constraint functions                  0.05 seconds
+ Time for objective function                    0.00 seconds
